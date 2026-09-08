@@ -51,9 +51,19 @@
                 {{ $slot }}
             </main>
 
-            <footer class="border-t border-gray-200 bg-white">
-                <div class="mx-auto max-w-6xl px-4 py-6 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
-                    &copy; {{ date('Y') }} Catálogo São Domingos. Todos os direitos reservados.
+            <footer class="border-t border-gray-200 bg-gradient-to-r from-amber-50 via-emerald-50 to-sky-50">
+                <div class="mx-auto max-w-6xl px-4 py-8 text-center sm:px-6 lg:px-8">
+                    <p class="text-sm font-medium text-gray-700">
+                        Desenvolvido com orgulho em São Domingos do Maranhão — A Terra do Abacaxi 🍍
+                    </p>
+
+                    <a href="#" class="mt-3 inline-block text-sm font-semibold text-emerald-700 underline-offset-2 hover:underline">
+                        Tem um comércio? Cadastre sua loja gratuitamente
+                    </a>
+
+                    <p class="mt-4 text-xs text-gray-400">
+                        &copy; {{ date('Y') }} Catálogo São Domingos. Todos os direitos reservados.
+                    </p>
                 </div>
             </footer>
         </div>
