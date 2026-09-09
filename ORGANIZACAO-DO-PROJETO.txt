@@ -1,0 +1,342 @@
+===============================================================================
+ CATALOGOSD - Guia Comercial de Sao Domingos do Maranhao
+ Documentacao da organizacao do projeto e da arquitetura
+===============================================================================
+
+Este arquivo explica, em portugues simples, como o projeto esta organizado:
+o que cada pasta e arquivo faz, como as pecas se conectam e por que as
+escolhas tecnicas foram feitas. Sirva-se dele como mapa sempre que precisar
+mexer em algo e nao lembrar onde fica.
+
+
+-------------------------------------------------------------------------------
+1. STACK TECNOLOGICA
+-------------------------------------------------------------------------------
+
+- Linguagem/Framework: PHP 8.4 + Laravel 13
+  (o pedido original era Laravel 11, mas essa versao ja tinha atingido o fim
+  do suporte de seguranca em fev/2026; usamos a versao atual com suporte).
+
+- Interatividade sem recarregar a pagina: Livewire 4
+  (usa o novo formato de "Componente de Arquivo Unico", explicado na secao 4).
+
+- JavaScript leve para pequenas interacoes (menu mobile, transicoes): Alpine.js
+  (ja vem embutido dentro do Livewire, nao precisa instalar separado).
+
+- Estilizacao: Tailwind CSS 4 (modelo "CSS-first", sem tailwind.config.js;
+  a configuracao fica dentro do proprio resources/css/app.css).
+
+- Banco de dados local: SQLite (arquivo unico em database/database.sqlite).
+  Em producao pode-se trocar para MySQL so mudando o .env, sem mudar codigo,
+  pois o Eloquent (camada de banco do Laravel) abstrai isso.
+
+- Build de assets (CSS/JS): Vite.
+
+- Ambiente local: Laravel Herd (gerencia o PHP, o Composer e o dominio
+  http://catalogo-sao-domingos.test).
+
+
+-------------------------------------------------------------------------------
+2. ARQUITETURA GERAL (visao de voo de passaro)
+-------------------------------------------------------------------------------
+
+O projeto segue o padrao MVC (Model-View-Controller) do Laravel, mas em vez
+de Controllers tradicionais para as paginas interativas, usamos componentes
+Livewire, que fazem o papel de "Controller + View reativa" ao mesmo tempo.
+
+Fluxo de uma requisicao para a pagina Inicial ("/"):
+
+  Navegador
+     |
+     v
+  routes/web.php            -> diz que a URL "/" pertence ao componente
+                                Livewire "home"
+     |
+     v
+  resources/views/components/⚡home.blade.php
+                                 -> classe PHP (sem arquivo separado) com a
+                                    logica: busca, filtros e paginacao
+                                 -> HTML/Blade com Tailwind logo abaixo da
+                                    classe, no mesmo arquivo
+     |
+     v
+  app/Models/Comercio.php (+ Categoria.php + Bairro.php)
+                                 -> consultam o banco de dados (SQLite) via
+                                    Eloquent (o ORM do Laravel)
+     |
+     v
+  resources/views/layouts/app.blade.php
+                                 -> "moldura" com cabecalho, rodape e o
+                                    <head> da pagina, que envolve o conteudo
+                                    do componente Livewire
+     |
+     v
+  resources/views/components/partials/comercio-card.blade.php
+                                 -> pedaco de HTML reutilizavel para desenhar
+                                    cada card de comercio na tela
+
+Quando o usuario digita na busca ou clica num filtro, o Livewire manda so os
+dados que mudaram para o servidor (via AJAX), roda a logica em PHP de novo e
+atualiza apenas o pedaco de HTML necessario na tela -- sem recarregar a
+pagina inteira e sem escrever JavaScript customizado.
+
+
+-------------------------------------------------------------------------------
+3. ESTRUTURA DE PASTAS (o que e cada uma)
+-------------------------------------------------------------------------------
+
+CATALOGOSD/
+|
+|-- app/
+|   |-- Http/Controllers/Controller.php
+|   |       Classe base para Controllers tradicionais. Hoje o projeto nao usa
+|   |       nenhum Controller proprio (a Home e um componente Livewire), mas
+|   |       ela fica pronta para paginas futuras que nao precisem de
+|   |       interatividade (ex.: paginas estaticas, webhooks, APIs).
+|   |
+|   |-- Models/
+|   |   |-- User.php        Usuario do sistema (login/autenticacao). Ainda nao
+|   |   |                   ha telas de login construidas; existe por padrao
+|   |   |                   do Laravel e sera usado quando criarmos area do
+|   |   |                   lojista/admin.
+|   |   |-- Categoria.php   Representa uma categoria de comercio (ex.:
+|   |   |                   Alimentacao, Saude). Tem um icone (emoji) e uma
+|   |   |                   relacao "um para muitos" com Comercio.
+|   |   |-- Bairro.php      Representa um bairro da cidade (ex.: Centro,
+|   |   |                   Entrada). Tambem se relaciona com Comercio.
+|   |   |-- Comercio.php    O coracao do catalogo: cada loja/servico
+|   |   |                   cadastrado. Alem dos campos do banco, tem 3
+|   |   |                   "atributos calculados":
+|   |   |                     - whatsapp_link: monta a URL wa.me a partir do
+|   |   |                       numero salvo.
+|   |   |                     - foto_url: devolve a foto cadastrada OU a
+|   |   |                       imagem placeholder padrao se nao houver foto.
+|   |   |                     - esta_aberto: calcula, na hora, se o comercio
+|   |   |                       esta aberto comparando o horario atual com
+|   |   |                       abre_as/fecha_as (e trata horario que passa
+|   |   |                       da meia-noite, tipo bar que fecha as 2h).
+|   |   |
+|   |   |-- Providers/AppServiceProvider.php
+|   |           Local onde configuracoes globais da aplicacao podem ser
+|   |           registradas na inicializacao (hoje esta vazio/padrao).
+|
+|-- bootstrap/
+|   |-- app.php             Configuracao de baixo nivel: registra rotas,
+|   |                       middlewares e tratamento de excecoes da aplicacao.
+|   |-- providers.php       Lista de Service Providers carregados no boot.
+|   |-- cache/              Arquivos de cache gerados automaticamente
+|                           (nao editar a mao).
+|
+|-- config/
+|       Um arquivo por assunto (app, auth, cache, database, filesystems,
+|       logging, mail, queue, services, session). Cada um guarda as opcoes
+|       daquele subsistema do Laravel; os valores sensiveis normalmente vem
+|       do arquivo .env (nao versionado) em vez de ficar hard-coded aqui.
+|
+|-- database/
+|   |-- database.sqlite     O banco de dados local (arquivo unico). NAO vai
+|   |                       para o Git (esta no .gitignore) porque e estado
+|   |                       local de cada maquina de desenvolvimento.
+|   |-- migrations/         "Receitas" versionadas de como o banco deve ser
+|   |   |                   estruturado. Cada arquivo cria/altera uma tabela.
+|   |   |                   Rodar `php artisan migrate` aplica as que faltam.
+|   |   |-- ..._users_table.php, ..._cache_table.php, ..._jobs_table.php
+|   |   |       Tabelas padrao do Laravel (login, cache em banco, filas).
+|   |   |-- ..._create_categorias_table.php
+|   |   |-- ..._create_bairros_table.php
+|   |   |-- ..._create_comercios_table.php
+|   |           As 3 tabelas do catalogo. A de comercios tem chave
+|   |           estrangeira para categoria_id e bairro_id (cada comercio
+|   |           pertence a uma categoria e a um bairro).
+|   |
+|   |-- seeders/            Scripts que POPULAM o banco com dados de teste.
+|   |   |-- DatabaseSeeder.php   Ponto de entrada: cria um usuario de teste
+|   |   |                       e chama o CatalogoSeeder.
+|   |   |-- CatalogoSeeder.php  Cria as 8 categorias, os 4 bairros e os 12
+|   |                           comercios (1 real - AF Barbearia - e 11 de
+|   |                           demonstracao/placeholder para preencher a
+|   |                           grade ate cadastrarmos os comercios reais).
+|   |                           Rodar de novo com:
+|   |                           php artisan db:seed --class=CatalogoSeeder
+|   |
+|   |-- factories/UserFactory.php
+|           Gera usuarios falsos para testes automatizados.
+|
+|-- public/
+|   |-- index.php           Unico arquivo PHP que o servidor web realmente
+|   |                       executa; e o "porteiro" que inicializa o Laravel
+|   |                       para cada requisicao. Nao mexer.
+|   |-- build/              CSS/JS ja compilados pelo Vite (gerado
+|   |                       automaticamente por `npm run build`; nao editar).
+|   |-- images/
+|   |   |-- placeholder-comercio.svg
+|   |           Imagem padrao mostrada quando um comercio ainda nao tem foto
+|   |           cadastrada.
+|   |-- storage/            Link simbolico para storage/app/public -- e por
+|   |                       aqui que fotos de comercio enviadas pelos
+|   |                       lojistas ficarao acessiveis pelo navegador.
+|
+|-- resources/
+|   |-- css/app.css         Arquivo-mestre de estilo. Importa o Tailwind
+|   |                       (@import 'tailwindcss'), define a fonte padrao e
+|   |                       a regra [x-cloak] (esconde elementos Alpine.js
+|   |                       antes do JS carregar, evitando "piscada" na
+|   |                       tela, como o menu mobile).
+|   |-- js/app.js           Ponto de entrada de JavaScript customizado (hoje
+|   |                       praticamente vazio, pois Livewire+Alpine cobrem
+|   |                       a interatividade atual).
+|   |-- views/
+|       |-- layouts/app.blade.php
+|       |       A "moldura" (layout) que envolve todas as paginas: monta o
+|       |       <head>, o cabecalho (logo + menu, com toggle mobile via
+|       |       Alpine), o rodape cultural ("Terra do Abacaxi") e insere o
+|       |       conteudo de cada pagina no lugar de {{ $slot }}.
+|       |-- components/
+|           |-- ⚡home.blade.php
+|           |       O COMPONENTE LIVEWIRE DA PAGINA INICIAL. Formato
+|           |       "Single File Component" (SFC) do Livewire 4: o arquivo
+|           |       comeca com <?php ... classe PHP ... ?> e, logo abaixo, o
+|           |       HTML/Blade daquela mesma tela -- tudo em um unico
+|           |       arquivo, sem precisar de uma classe PHP separada.
+|           |       Contem:
+|           |         - propriedades $busca, $categoriaId, $bairroId
+|           |           (sincronizadas com a URL via #[Url], entao dá pra
+|           |           compartilhar um link ja filtrado);
+|           |         - metodos selecionarCategoria(), selecionarBairro() e
+|           |           limparFiltros();
+|           |         - metodo with(), que monta os dados enviados para o
+|           |           HTML (categorias, bairros, destaques, comercios
+|           |           paginados de 12 em 12, com busca "like" por nome ou
+|           |           categoria);
+|           |         - o HTML: Hero (secao de topo estilo Lagoa do Ze Feio),
+|           |           barra de busca, chips de bairro, grade de
+|           |           categorias, secao "Em destaque" e a grade principal
+|           |           de comercios com paginacao.
+|           |
+|           |-- partials/comercio-card.blade.php
+|                   Componente Blade reutilizavel (usado como
+|                   <x-partials.comercio-card :comercio="$c" />) que desenha
+|                   UM card de comercio: foto (ou placeholder), categoria,
+|                   nome, endereco/bairro, tag "Aberto agora"/"Fechado",
+|                   botao verde do WhatsApp e botao "Ver detalhes".
+|
+|-- routes/
+|   |-- web.php             Define as URLs do site. Hoje so tem uma linha:
+|   |                       Route::livewire('/', 'home') -- diz que a URL
+|   |                       raiz "/" e servida pelo componente Livewire
+|   |                       "home" (o arquivo ⚡home.blade.php acima).
+|   |-- console.php         Comandos artisan customizados (hoje vazio/padrao).
+|
+|-- storage/                Arquivos gerados em tempo de execucao: logs
+|   |                       (storage/logs), cache de views compiladas, sessoes
+|   |                       de usuario, arquivos enviados (storage/app). Nao
+|   |                       fica no Git (exceto os .gitignore de cada pasta).
+|
+|-- tests/                  Testes automatizados (Feature = testa telas/rotas
+|                           inteiras, Unit = testa pedacos isolados de codigo).
+|                           Ainda sao os testes de exemplo padrao do Laravel.
+|
+|-- .env                    Configuracoes locais (nome do app, URL, banco de
+|                           dados, chaves). NUNCA vai para o Git -- cada
+|                           desenvolvedor/servidor tem o seu proprio.
+|-- .env.example            Modelo do .env sem valores sensiveis, serve de
+|                           referencia para criar um novo .env.
+|-- .gitignore              Lista de arquivos/pastas que o Git deve ignorar
+|                           (vendor/, node_modules/, .env, banco sqlite,
+|                           build do Vite, etc).
+|-- artisan                 Script de linha de comando do Laravel
+|                           (ex.: php artisan migrate, php artisan make:model).
+|-- composer.json / composer.lock
+|                           Lista as dependencias PHP do projeto (Laravel,
+|                           Livewire, etc.) e trava as versoes exatas
+|                           instaladas, para todo mundo usar as mesmas.
+|-- package.json / package-lock.json
+|                           Mesma ideia, mas para dependencias JavaScript
+|                           (Vite, Tailwind).
+|-- vite.config.js          Configura o Vite: quais arquivos CSS/JS compilar
+|                           e o plugin do Tailwind.
+|-- phpunit.xml             Configuracao dos testes automatizados.
+|-- README.md               Readme padrao do Laravel.
+|-- CLAUDE.md / AGENTS.md   Instrucoes/contexto para assistentes de IA que
+|                           venham a trabalhar neste repositorio (gerados
+|                           automaticamente pelo instalador do Laravel).
+
+
+-------------------------------------------------------------------------------
+4. O QUE E UM "COMPONENTE LIVEWIRE DE ARQUIVO UNICO" (SFC)?
+-------------------------------------------------------------------------------
+
+No Livewire 3, cada tela interativa exigia 2 arquivos: uma classe PHP (em
+app/Livewire/Home.php) e uma view Blade separada (resources/views/livewire/
+home.blade.php).
+
+No Livewire 4 (versao usada aqui), existe o formato "Single File Component":
+um UNICO arquivo, com o simbolo de raio (⚡) no nome, dentro de
+resources/views/components/. O arquivo comeca com um bloco <?php ... ?>
+contendo uma classe anonima que estende Livewire\Component, e logo abaixo
+vem o HTML/Blade normal daquela tela. E exatamente o que temos em
+resources/views/components/⚡home.blade.php.
+
+Vantagem: tudo relacionado aquela tela (dados, logica e visual) fica junto,
+mais facil de achar e de dar manutencao em telas pequenas/medias.
+
+
+-------------------------------------------------------------------------------
+5. IDENTIDADE VISUAL
+-------------------------------------------------------------------------------
+
+A paleta de cores segue a identidade da cidade:
+  - Amarelo/Ambar  -> Abacaxi (cartao-postal de Sao Domingos do Maranhao)
+  - Verde Esmeralda -> coroa do abacaxi / vegetacao
+  - Azul Sereno     -> Lagoa do Ze Feio
+
+O Hero (topo da pagina inicial) usa um degrade dessas 3 cores com ondas em
+SVG simulando a lagoa, ja que ainda nao ha uma foto real aprovada para usar
+como fundo. Para trocar por uma foto de verdade no futuro, basta salvar a
+imagem em public/images/ e ajustar o bloco <section> do Hero em
+resources/views/components/⚡home.blade.php.
+
+
+-------------------------------------------------------------------------------
+6. COMO RODAR E TESTAR LOCALMENTE
+-------------------------------------------------------------------------------
+
+1. Site ja fica disponivel em: http://catalogo-sao-domingos.test
+   (o Laravel Herd cuida do PHP e do dominio automaticamente).
+
+2. Para desenvolver com atualizacao automatica do CSS/JS, rode em um
+   terminal separado e deixe aberto:
+       npm run dev
+
+3. Para gerar a versao "de producao" dos assets (usada quando o `npm run
+   dev` nao esta rodando):
+       npm run build
+
+4. Comandos uteis do Laravel (sempre dentro da pasta do projeto):
+       php artisan migrate              -> aplica migrations pendentes
+       php artisan db:seed --class=CatalogoSeeder
+                                         -> repopula categorias/bairros/
+                                            comercios de exemplo
+       php artisan route:list           -> lista todas as rotas
+       php artisan tinker               -> console interativo para testar
+                                            Models/queries
+
+
+-------------------------------------------------------------------------------
+7. O QUE AINDA FALTA (proximos passos naturais)
+-------------------------------------------------------------------------------
+
+- Pagina de detalhes do comercio (rota /comercios/{slug}), hoje o botao
+  "Ver detalhes" aponta para uma URL que ainda nao existe.
+- Formulario publico de cadastro de comercio ("Cadastre sua loja
+  gratuitamente"), hoje o link no rodape e so um placeholder.
+- Painel/area do lojista para editar seus proprios dados (usaria o model
+  User ja existente).
+- Upload de foto do comercio (o campo foto_path e a estrutura de storage ja
+  estao prontos para isso).
+- Substituir os 11 comercios de demonstracao por comercios reais da cidade.
+
+
+===============================================================================
+ Fim do documento.
+===============================================================================
